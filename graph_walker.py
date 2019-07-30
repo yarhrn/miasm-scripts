@@ -26,38 +26,14 @@ log.setLevel(logging.INFO)
 parser = ArgumentParser("Disassemble a binary")
 parser.add_argument('filename', help="File to disassemble")
 parser.add_argument('address', help="Starting address for disassembly engine")
+parser.add_argument('-l', "--limit", help="File to write results", default=9223372036854775807)
+
 parser.add_argument('-dst', "--file-destination", help="File to write results")
 parser.add_argument('-r', "--recurfunctions", action="store_true",
                     help="Disassemble founded functions")
-parser.add_argument('-v', "--verbose", action="count", help="Verbose mode",
-                    default=0)
-parser.add_argument('-z', "--dis-nulstart-block", action="store_true",
-                    help="Do not disassemble NULL starting block")
-parser.add_argument('-s', "--simplify", action="count",
-                    help="Apply simplifications rules (liveness, graph simplification, ...)",
-                    default=0)
+
 parser.add_argument('-a', "--try-disasm-all", action="store_true",
                     help="Try to disassemble the whole binary")
-parser.add_argument('-i', "--image", action="store_true",
-                    help="Display image representation of disasm")
-parser.add_argument('-c', "--rawbinary", default=False, action="store_true",
-                    help="Don't interpret input as ELF/PE/...")
-parser.add_argument('-d', "--defuse", action="store_true",
-                    help="Dump the def-use graph in file 'defuse.dot'."
-                    "The defuse is dumped after simplifications if -s option is specified")
-parser.add_argument('-p', "--ssa", action="store_true",
-                    help="Generate the ssa form in  'ssa.dot'.")
-parser.add_argument('-x', "--propagexpr", action="store_true",
-                    help="Do Expression propagation.")
-parser.add_argument('-y', "--stack2var", action="store_true",
-                    help="*Try* to do transform stack accesses into variables. "
-                    "Use only with --propagexpr option. "
-                    "WARNING: not reliable, may fail.")
-parser.add_argument('-e', "--loadint", action="store_true",
-                    help="Load integers from binary in fixed memory lookup.")
-parser.add_argument('-j', "--calldontmodstack", action="store_true",
-                    help="Consider stack high is not modified in subcalls")
-
 
 args = parser.parse_args()
 
@@ -148,7 +124,11 @@ destination = None
 if args.file_destination:
     destination = open(args.file_destination,'w')
 
-while stack:
+finish = False
+processed_lines = 0
+limit = int(args.limit)
+
+while stack and not finish:
     asm_block = stack.pop()
     if asm_block.loc_key in visited_locs:
         continue
@@ -158,11 +138,12 @@ while stack:
     else:
         print(asm_block)
     visited_locs.append(asm_block.loc_key)
+    processed_lines += len(asm_block.lines)
+    if processed_lines >= limit:
+        finish = True
     for obj in asm_block.bto:
         if obj.c_t == AsmConstraint.c_next:
             stack.append(asmcfg.loc_key_to_block(obj.loc_key))
     for obj in asm_block.bto:
         if obj.c_t == AsmConstraint.c_to:
             stack.append(asmcfg.loc_key_to_block(obj.loc_key))
-
-
