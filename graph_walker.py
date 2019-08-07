@@ -40,12 +40,14 @@ args = parser.parse_args()
 
 
 with open(args.filename, "rb") as fdesc:
-    cont = Container.from_stream(fdesc, addr=0)
+    cont = Container.from_stream(fdesc)
 
 bs = cont.bin_stream
 e = cont.executable
 
 arch = cont.arch
+print("arch")
+print(arch)
 if not arch:
     print("Architecture recognition fail. Please specify it in arguments")
     exit(-1)
@@ -63,7 +65,7 @@ mdis.blocs_wd = None
 mdis.dont_dis_nulstart_bloc = False
 mdis.follow_call = True
 
-adr = int(args.address,0)
+adr = cont.entry_point
 todo = [(mdis, None, adr)]
 
 done = set()
