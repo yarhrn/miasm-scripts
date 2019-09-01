@@ -16,6 +16,8 @@ from miasm.expression.simplifications import expr_simp
 from miasm.analysis.ssa import SSADiGraph
 from miasm.ir.ir import AssignBlock, IRBlock
 from miasm.analysis.simplifier import IRCFGSimplifierCommon, IRCFGSimplifierSSA
+from miasm.expression.expression import ExprMem
+
 
 log = logging.getLogger("dis")
 console_handler = logging.StreamHandler()
@@ -27,13 +29,10 @@ parser = ArgumentParser("Disassemble a binary")
 parser.add_argument('filename', help="File to disassemble")
 parser.add_argument('address', help="Starting address for disassembly engine")
 parser.add_argument('-l', "--limit", help="File to write results", default=9223372036854775807)
-
 parser.add_argument('-dst', "--file-destination", help="File to write results")
-parser.add_argument('-r', "--recurfunctions", action="store_true",
-                    help="Disassemble founded functions")
-
-parser.add_argument('-a', "--try-disasm-all", action="store_true",
-                    help="Try to disassemble the whole binary")
+parser.add_argument('-m', "--memory-access-destination", help="File to write memory access")
+parser.add_argument('-r', "--recurfunctions", action="store_true", help="Disassemble founded functions")
+parser.add_argument('-a', "--try-disasm-all", action="store_true", help="Try to disassemble the whole binary")
 
 args = parser.parse_args()
 
@@ -126,6 +125,10 @@ destination = None
 if args.file_destination:
     destination = open(args.file_destination,'w')
 
+memory_access_destination = None
+if args.memory_access_destination:
+    memory_access_destination = open(args.memory_access_destination,'w')
+
 finish = False
 processed_lines = 0
 limit = int(args.limit)
@@ -136,9 +139,16 @@ while stack and not finish:
         continue
     visited_locs.append(asm_block.loc_key)
     if destination is not None:
-        destination.write(asm_block.to_string())
+       destination.write(asm_block.to_string())
     else:
         print(asm_block)
+
+    if memory_access_destination is not None:
+        for instruction in asm_block.lines:
+            for arg in instruction.args:
+                if isinstance(arg, ExprMem):
+                    memory_access_destination.write(hex(instruction.offset) + " " + instruction.to_string() + "\n")
+
     visited_locs.append(asm_block.loc_key)
     processed_lines += len(asm_block.lines)
     if processed_lines >= limit:
