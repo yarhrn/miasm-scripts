@@ -45,6 +45,9 @@ addr = cont.entry_point
 asmcfg = mdis.dis_multiblock(addr)
 
 
+ir_arch = machine.ir(mdis.loc_db)
+ircfg = ir_arch.new_ircfg_from_asmcfg(asmcfg)
+
 visited_locs = []
 stack = [asmcfg.loc_key_to_block(mdis.loc_db.get_offset_location(addr))]
 
@@ -68,6 +71,7 @@ while stack and not finish:
     if destination is not None:
        destination.write(asm_block.to_string())
     else:
+        print(ircfg.get_block(asm_block.loc_key))
         print(asm_block)
 
     if memory_access_destination is not None:
