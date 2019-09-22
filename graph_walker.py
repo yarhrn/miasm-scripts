@@ -27,99 +27,26 @@ log.setLevel(logging.INFO)
 
 parser = ArgumentParser("Disassemble a binary")
 parser.add_argument('filename', help="File to disassemble")
-parser.add_argument('address', help="Starting address for disassembly engine")
 parser.add_argument('-l', "--limit", help="File to write results", default=9223372036854775807)
 parser.add_argument('-dst', "--file-destination", help="File to write results")
 parser.add_argument('-m', "--memory-access-destination", help="File to write memory access")
-parser.add_argument('-r', "--recurfunctions", action="store_true", help="Disassemble founded functions")
-parser.add_argument('-a', "--try-disasm-all", action="store_true", help="Try to disassemble the whole binary")
+
 
 args = parser.parse_args()
 
 
 
-with open(args.filename, "rb") as fdesc:
-    cont = Container.from_stream(fdesc)
+fdesc = open(args.filename, 'rb')
 
-bs = cont.bin_stream
-e = cont.executable
-
-arch = cont.arch
-print("arch")
-print(arch)
-if not arch:
-    print("Architecture recognition fail. Please specify it in arguments")
-    exit(-1)
-
-# Instance the arch-dependent machine
-machine = Machine(arch)
-mn, dis_engine = machine.mn, machine.dis_engine
-ira, ir = machine.ira, machine.ir
-
-
-mdis = dis_engine(bs, loc_db=cont.loc_db)
-# configure disasm engine
-mdis.dontdis_retcall = False
-mdis.blocs_wd = None
-mdis.dont_dis_nulstart_bloc = False
-mdis.follow_call = True
-
-adr = cont.entry_point
-todo = [(mdis, None, adr)]
-
-done = set()
-all_funcs = set()
-all_funcs_blocks = {}
-
-
-done_interval = interval()
-finish = False
-
-entry_points = set()
-# Main disasm loop
-while not finish and todo:
-    while not finish and todo:
-        mdis, caller, ad = todo.pop(0)
-        if ad in done:
-            continue
-        done.add(ad)
-        asmcfg = mdis.dis_multiblock(ad)
-        entry_points.add(mdis.loc_db.get_offset_location(ad))
-
-        all_funcs.add(ad)
-        all_funcs_blocks[ad] = asmcfg
-        for block in asmcfg.blocks:
-            for l in block.lines:
-                done_interval += interval([(l.offset, l.offset + l.l)])
-
-        if args.recurfunctions:
-            for block in asmcfg.blocks:
-                instr = block.get_subcall_instr()
-                if not instr:
-                    continue
-                for dest in instr.getdstflow(mdis.loc_db):
-                    if not dest.is_loc():
-                        continue
-                    offset = mdis.loc_db.get_location_offset(dest.loc_key)
-                    todo.append((mdis, instr, offset))
-
-
-    if args.try_disasm_all:
-        for a, b in done_interval.intervals:
-            if b in done:
-                continue
-            log.debug('add func %s' % hex(b))
-            todo.append((mdis, None, b))
-
-
-# Generate dotty graph
-all_asmcfg = AsmCFG(mdis.loc_db)
-for blocks in viewvalues(all_funcs_blocks):
-    all_asmcfg += blocks
+cont = Container.from_stream(fdesc)
+machine = Machine(cont.arch)
+mdis = machine.dis_engine(cont.bin_stream, loc_db=cont.loc_db)
+addr = cont.entry_point
+asmcfg = mdis.dis_multiblock(addr)
 
 
 visited_locs = []
-stack = [asmcfg.loc_key_to_block(mdis.loc_db.get_offset_location(adr))]
+stack = [asmcfg.loc_key_to_block(mdis.loc_db.get_offset_location(addr))]
 
 destination = None
 if args.file_destination:
