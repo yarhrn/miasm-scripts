@@ -41,12 +41,52 @@ fdesc = open(args.filename, 'rb')
 cont = Container.from_stream(fdesc)
 machine = Machine(cont.arch)
 mdis = machine.dis_engine(cont.bin_stream, loc_db=cont.loc_db)
-addr = cont.entry_point
-asmcfg = mdis.dis_multiblock(addr)
+mdis.follow_call = True
+addr = 1728 #cont.entry_point
+
+todo = [(mdis, None, addr)]
+done = set()
+all_funcs = set()
+all_funcs_blocks = {}
+done_interval = interval()
+finish = False # todo remove this
+entry_points = set()
+
+while not finish and todo:
+    while not finish and todo:
+        mdis, caller, ad = todo.pop(0)
+        if ad in done:
+            continue
+        done.add(ad)
+        asmcfg = mdis.dis_multiblock(ad)
+        entry_points.add(mdis.loc_db.get_offset_location(ad))
+
+        all_funcs.add(ad)
+        all_funcs_blocks[ad] = asmcfg
+        for block in asmcfg.blocks:
+            for l in block.lines:
+                done_interval += interval([(l.offset, l.offset + l.l)])
+
+        for block in asmcfg.blocks:
+            instr = block.get_subcall_instr()
+            if not instr:
+                continue
+            for dest in instr.getdstflow(mdis.loc_db):
+                if not dest.is_loc():
+                    continue
+                offset = mdis.loc_db.get_location_offset(dest.loc_key)
+                todo.append((mdis, instr, offset))
+
+
+
+asmcfg = AsmCFG(mdis.loc_db)
+for blocks in viewvalues(all_funcs_blocks):
+    asmcfg += blocks
 
 
 ir_arch = machine.ir(mdis.loc_db)
 ircfg = ir_arch.new_ircfg_from_asmcfg(asmcfg)
+
 
 visited_locs = []
 stack = [asmcfg.loc_key_to_block(mdis.loc_db.get_offset_location(addr))]
@@ -59,12 +99,16 @@ memory_access_destination = None
 if args.memory_access_destination:
     memory_access_destination = open(args.memory_access_destination,'w')
 
+
+
 finish = False
 processed_lines = 0
 limit = int(args.limit)
 
 while stack and not finish:
     asm_block = stack.pop()
+    if asm_block is None:
+        continue
     if asm_block.loc_key in visited_locs:
         continue
     visited_locs.append(asm_block.loc_key)
